@@ -1,23 +1,31 @@
 package org.simple.makebelieve
 
-import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.sql.{SaveMode, SparkSession}
 
-import scala.math.random
 
 object SimpleJob {
   def main(args: Array[String]){
-    val conf = new SparkConf().setAppName("Spark Pi").setMaster("local[*]")
-    val spark = new SparkContext(conf)
-    val slices = if(args.length > 0) args(0).toInt else 2
-    val n = math.min(100000L * slices, Int.MaxValue).toInt
-    val count = spark.parallelize(1 until n, slices).map{
-      i =>
-        val x = random * 2 - 1
-        val y = random * 2 - 1
-        if(x*x + y*y < 1) 1 else 0
-    }.reduce(_ + _)
+    val spark = SparkSession
+      .builder()
+      .appName("MyApp")
+      .getOrCreate()
 
-    println(s"Pi is roughly ${4.0 * count / n}")
+    val df = spark
+      .read
+      .option("header", "true")
+      .option("inferSchema", "true")
+      .csv("s3n://data-bucket-phase-1/2014GSSNDI.csv")
+
+    val refined = df
+      .groupBy("year", "relig")
+      .count()
+      .cache()
+
+    refined
+      .write
+      .mode(SaveMode.Overwrite)
+      .csv("s3n://data-bucket-phase-1/religion-by-year")
+
     spark.stop()
   }
 }
